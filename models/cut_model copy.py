@@ -2,8 +2,7 @@ import numpy as np
 import torch
 from .base_model import BaseModel
 from . import networks
-# from .patchnce import PatchNCELoss
-from .augmented_patchnce import AugmentedPatchNCELoss as PatchNCELoss
+from .patchnce import PatchNCELoss
 import util.util as util
 
 
