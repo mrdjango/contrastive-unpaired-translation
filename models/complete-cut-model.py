@@ -7,33 +7,95 @@ import util.util as util
 
 
 class CUTModel(BaseModel):
-    """ This class implements CUT and FastCUT model with enhanced tangent distance NCE loss
+    """This class implements CUT and FastCUT model with enhanced tangent distance NCE loss
     The code borrows heavily from the PyTorch implementation of CycleGAN
     """
+
     @staticmethod
     def modify_commandline_options(parser, is_train=True):
-        """  Configures options specific for CUT model """
-        parser.add_argument('--CUT_mode', type=str, default="CUT", choices='(CUT, cut, FastCUT, fastcut)')
-        parser.add_argument('--lambda_GAN', type=float, default=1.0, help='weight for GAN loss：GAN(G(X))')
-        parser.add_argument('--lambda_NCE', type=float, default=1.0, help='weight for NCE loss: NCE(G(X), X)')
-        parser.add_argument('--lambda_TD', type=float, default=0.5, help='weight for tangent distance term')
-        parser.add_argument('--nce_idt', type=util.str2bool, nargs='?', const=True, default=False, 
-                           help='use NCE loss for identity mapping: NCE(G(Y), Y))')
-        parser.add_argument('--nce_layers', type=str, default='0,4,8,12,16', help='compute NCE loss on which layers')
-        parser.add_argument('--nce_includes_all_negatives_from_minibatch',
-                           type=util.str2bool, nargs='?', const=True, default=False,
-                           help='include the negatives from the other samples of the minibatch when computing the contrastive loss')
-        parser.add_argument('--netF', type=str, default='mlp_sample', choices=['sample', 'reshape', 'mlp_sample'],
-                           help='how to downsample the feature map')
-        parser.add_argument('--netF_nc', type=int, default=256, help='number of channels in F network')
-        parser.add_argument('--nce_T', type=float, default=0.07, help='temperature for NCE loss')
-        parser.add_argument('--num_patches', type=int, default=256, help='number of patches per layer')
-        parser.add_argument('--flip_equivariance', type=util.str2bool, nargs='?', const=True, default=False,
-                           help="Enforce flip-equivariance as additional regularization")
-        parser.add_argument('--use_color_tangents', type=util.str2bool, default=True, 
-                           help='use color transformation tangents')
-        parser.add_argument('--batch_chunk_size', type=int, default=64, 
-                           help='chunk size for batch processing')
+        """Configures options specific for CUT model"""
+        parser.add_argument(
+            "--CUT_mode",
+            type=str,
+            default="CUT",
+            choices="(CUT, cut, FastCUT, fastcut)",
+        )
+        parser.add_argument(
+            "--lambda_GAN",
+            type=float,
+            default=1.0,
+            help="weight for GAN loss：GAN(G(X))",
+        )
+        parser.add_argument(
+            "--lambda_NCE",
+            type=float,
+            default=1.0,
+            help="weight for NCE loss: NCE(G(X), X)",
+        )
+        parser.add_argument(
+            "--lambda_TD",
+            type=float,
+            default=0.5,
+            help="weight for tangent distance term",
+        )
+        parser.add_argument(
+            "--nce_idt",
+            type=util.str2bool,
+            nargs="?",
+            const=True,
+            default=False,
+            help="use NCE loss for identity mapping: NCE(G(Y), Y))",
+        )
+        parser.add_argument(
+            "--nce_layers",
+            type=str,
+            default="0,4,8,12,16",
+            help="compute NCE loss on which layers",
+        )
+        parser.add_argument(
+            "--nce_includes_all_negatives_from_minibatch",
+            type=util.str2bool,
+            nargs="?",
+            const=True,
+            default=False,
+            help="include the negatives from the other samples of the minibatch when computing the contrastive loss",
+        )
+        parser.add_argument(
+            "--netF",
+            type=str,
+            default="mlp_sample",
+            choices=["sample", "reshape", "mlp_sample"],
+            help="how to downsample the feature map",
+        )
+        parser.add_argument(
+            "--netF_nc", type=int, default=256, help="number of channels in F network"
+        )
+        parser.add_argument(
+            "--nce_T", type=float, default=0.07, help="temperature for NCE loss"
+        )
+        parser.add_argument(
+            "--num_patches", type=int, default=256, help="number of patches per layer"
+        )
+        parser.add_argument(
+            "--flip_equivariance",
+            type=util.str2bool,
+            nargs="?",
+            const=True,
+            default=False,
+            help="Enforce flip-equivariance as additional regularization",
+        )
+        parser.add_argument(
+            "--use_color_tangents",
+            type=util.str2bool,
+            default=True,
+            help="use color transformation tangents",
+        )
+        parser.add_argument(
+            "--batch_chunk_size",
+            type=int,
+            default=64,
+            help="chunk size for batch processing",
+        )
 
         parser.set_defaults(pool_size=0)
 
@@ -48,7 +110,7 @@ class CUTModel(BaseModel):
                 lambda_NCE=10.0,
                 flip_equivariance=True,
                 n_epochs=150,
-                n_epochs_decay=50
+                n_epochs_decay=50,
             )
         else:
             raise ValueError(opt.CUT_mode)
@@ -63,28 +125,56 @@ class CUTModel(BaseModel):
         BaseModel.__init__(self, opt)
 
         # specify the training losses you want to print out.
-        self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE', 'TD']
-        
+        self.loss_names = ["G_GAN", "D_real", "D_fake", "G", "NCE", "TD"]
+
         # specify the images you want to save/display.
-        self.visual_names = ['real_A', 'fake_B', 'real_B']
-        
+        self.visual_names = ["real_A", "fake_B", "real_B"]
+
         # specify the models you want to save to the disk.
-        self.model_names = ['G', 'F', 'D'] if self.isTrain else ['G']
+        self.model_names = ["G", "F", "D"] if self.isTrain else ["G"]
 
         # define the networks
-        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.normG,
-                                    not opt.no_dropout, opt.init_type, opt.init_gain, opt.no_antialias,
-                                    opt.no_antialias_up, self.gpu_ids, opt)
-        
-        self.nce_layers = [int(i) for i in self.opt.nce_layers.split(',')]
+        self.netG = networks.define_G(
+            opt.input_nc,
+            opt.output_nc,
+            opt.ngf,
+            opt.netG,
+            opt.normG,
+            not opt.no_dropout,
+            opt.init_type,
+            opt.init_gain,
+            opt.no_antialias,
+            opt.no_antialias_up,
+            self.gpu_ids,
+            opt,
+        )
+
+        self.nce_layers = [int(i) for i in self.opt.nce_layers.split(",")]
 
         if self.isTrain:
-            self.netF = networks.define_F(opt.input_nc, opt.netF, opt.normG,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain,
-                                        opt.no_antialias, self.gpu_ids, opt)
-            self.netD = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
-                                        opt.n_layers_D, opt.normD, opt.init_type,
-                                        opt.init_gain, opt.no_antialias, self.gpu_ids, opt)
+            self.netF = networks.define_F(
+                opt.input_nc,
+                opt.netF,
+                opt.normG,
+                not opt.no_dropout,
+                opt.init_type,
+                opt.init_gain,
+                opt.no_antialias,
+                self.gpu_ids,
+                opt,
+            )
+            self.netD = networks.define_D(
+                opt.output_nc,
+                opt.ndf,
+                opt.netD,
+                opt.n_layers_D,
+                opt.normD,
+                opt.init_type,
+                opt.init_gain,
+                opt.no_antialias,
+                self.gpu_ids,
+                opt,
+            )
 
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
@@ -94,10 +184,14 @@ class CUTModel(BaseModel):
                 self.criterionNCE.append(TangentPatchNCELoss(opt).to(self.device))
 
             self.criterionIdt = torch.nn.L1Loss().to(self.device)
-            
+
             # initialize optimizers
-            self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
-            self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
+            self.optimizer_G = torch.optim.Adam(
+                self.netG.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2)
+            )
+            self.optimizer_D = torch.optim.Adam(
+                self.netD.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2)
+            )
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
@@ -107,12 +201,14 @@ class CUTModel(BaseModel):
         self.set_input(data)
         self.real_A = self.real_A[:bs_per_gpu]
         self.real_B = self.real_B[:bs_per_gpu]
-        self.forward()                     
+        self.forward()
         if self.isTrain:
-            self.compute_D_loss().backward() 
+            self.compute_D_loss().backward()
             self.compute_G_loss().backward()
             if self.opt.lambda_NCE > 0.0:
-                self.optimizer_F = torch.optim.Adam(self.netF.parameters(), lr=self.opt.lr, betas=(opt.beta1, opt.beta2))
+                self.optimizer_F = torch.optim.Adam(
+                    self.netF.parameters(), lr=self.opt.lr, betas=(opt.beta1, opt.beta2)
+                )
                 self.optimizers.append(self.optimizer_F)
 
     def optimize_parameters(self):
@@ -130,12 +226,12 @@ class CUTModel(BaseModel):
         # update G
         self.set_requires_grad(self.netD, False)
         self.optimizer_G.zero_grad()
-        if self.opt.netF == 'mlp_sample':
+        if self.opt.netF == "mlp_sample":
             self.optimizer_F.zero_grad()
         self.loss_G = self.compute_G_loss()
         self.loss_G.backward()
         self.optimizer_G.step()
-        if self.opt.netF == 'mlp_sample':
+        if self.opt.netF == "mlp_sample":
             self.optimizer_F.step()
 
     def set_input(self, input):
@@ -143,23 +239,29 @@ class CUTModel(BaseModel):
         Parameters:
             input (dict): include the data itself and its metadata information.
         """
-        AtoB = self.opt.direction == 'AtoB'
-        self.real_A = input['A' if AtoB else 'B'].to(self.device)
-        self.real_B = input['B' if AtoB else 'A'].to(self.device)
-        self.image_paths = input['A_paths' if AtoB else 'B_paths']
+        AtoB = self.opt.direction == "AtoB"
+        self.real_A = input["A" if AtoB else "B"].to(self.device)
+        self.real_B = input["B" if AtoB else "A"].to(self.device)
+        self.image_paths = input["A_paths" if AtoB else "B_paths"]
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.real = torch.cat((self.real_A, self.real_B), dim=0) if self.opt.nce_idt and self.opt.isTrain else self.real_A
+        self.real = (
+            torch.cat((self.real_A, self.real_B), dim=0)
+            if self.opt.nce_idt and self.opt.isTrain
+            else self.real_A
+        )
         if self.opt.flip_equivariance and self.opt.isTrain:
-            self.flipped_for_equivariance = self.opt.isTrain and (np.random.random() < 0.5)
+            self.flipped_for_equivariance = self.opt.isTrain and (
+                np.random.random() < 0.5
+            )
             if self.flipped_for_equivariance:
                 self.real = torch.flip(self.real, [3])
 
         self.fake = self.netG(self.real)
-        self.fake_B = self.fake[:self.real_A.size(0)]
+        self.fake_B = self.fake[: self.real_A.size(0)]
         if self.opt.nce_idt:
-            self.idt_B = self.fake[self.real_A.size(0):]
+            self.idt_B = self.fake[self.real_A.size(0) :]
 
     def compute_D_loss(self):
         """Calculate GAN loss for the discriminator"""
@@ -182,7 +284,9 @@ class CUTModel(BaseModel):
         # First, G(A) should fake the discriminator
         if self.opt.lambda_GAN > 0.0:
             pred_fake = self.netD(fake)
-            self.loss_G_GAN = self.criterionGAN(pred_fake, True).mean() * self.opt.lambda_GAN
+            self.loss_G_GAN = (
+                self.criterionGAN(pred_fake, True).mean() * self.opt.lambda_GAN
+            )
         else:
             self.loss_G_GAN = 0.0
 
@@ -205,12 +309,14 @@ class CUTModel(BaseModel):
         n_layers = len(self.nce_layers)
         feat_q = self.netG(tgt, self.nce_layers, encode_only=True)
         feat_k = self.netG(src, self.nce_layers, encode_only=True)
-        
+
         feat_k_pool, sample_ids = self.netF(feat_k, self.opt.num_patches, None)
         feat_q_pool, _ = self.netF(feat_q, self.opt.num_patches, sample_ids)
 
         total_nce_loss = 0.0
-        for f_q, f_k, crit, nce_layer in zip(feat_q_pool, feat_k_pool, self.criterionNCE, self.nce_layers):
+        for f_q, f_k, crit, nce_layer in zip(
+            feat_q_pool, feat_k_pool, self.criterionNCE, self.nce_layers
+        ):
             loss = crit(f_q, f_k) * self.opt.lambda_NCE
             total_nce_loss += loss.mean()
 
